@@ -1,0 +1,19 @@
+This is a trac plugin for handling beanstalk 'web hook' commit callbacks
+in trac repositories.
+
+This means the svnsync commands can be done automatically on commit, instead
+of via an out-of-band setup. It also enables the full set of "commit ticket
+updater" features for automatically associating tickets with changesets.
+
+It has only been tested with subversion and trac 0.12.2!
+
+To use:
+ * build and install the plugin (python setup.py bdist_egg, copy the egg to
+   $trac/plugins).
+ * svnsync initialize a local mirror of the beanstalk repository.
+ * add [beanstalk].trac_admin_command trac config.
+   e.g.: trac_admin_command = /usr/local/bin/trac-admin
+ * add [beanstalk].sync_commands trac config with exact svnsync synchronize
+   command.
+   e.g.: sync_commands = REPO:svnsync synchronize file:///home/svn-repos/REPO
+ * beanstalk: point web hook integration at http://trac/beanstalk_hook/REPO/
