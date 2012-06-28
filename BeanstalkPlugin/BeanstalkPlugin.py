@@ -48,9 +48,6 @@ class BeanstalkHandler(trac.core.Component):
         if request.method != 'POST':
             return False
 
-        if request.args.get('commit', None) is None:
-            return False
-
         repo_name = _get_repo_name(request.path_info)
         if repo_name is None:
             return False
@@ -59,6 +56,11 @@ class BeanstalkHandler(trac.core.Component):
         if repo is None:
             return False
         repo.close()
+
+        from cgi import parse_qs
+        request.args = parse_qs(request.read())
+        if request.args.get('commit', request.args.get('payload', None)) is None:
+            return False
 
         ## XXX: evil hack to disable CSRF checking (is there a better way?)
         request._inheaders.insert(0, ('content-type', 'xx'))
@@ -73,9 +75,12 @@ class BeanstalkHandler(trac.core.Component):
         repo_name = _get_repo_name(request.path_info)
 
         ## parse the beanstalk commit json
-        commit = json.loads(request.args.get('commit'))
+        commit = json.loads(request.args.get('commit', request.args.get('payload'))[0])
         self.log.debug(commit)
-        changeset = commit['revision']
+        if 'revision' in commit:
+            changesets = [commit['revision']]
+        else:
+            changesets = [ x['id'] for x in commit['commits'] ]
 
         ## svnsync (or something)
         if repo_name in self._sync_commands:
@@ -89,13 +94,15 @@ class BeanstalkHandler(trac.core.Component):
         ## XXX: ought to be possible via:
         ##   RepositoryManager(self.env).notify('changeset_added', repo_name, (changeset,))
         ## but unfortunately this is currently broken due to the repo cache implementation.
-        cmd = '%s %s changeset added %s %s' % (self.trac_admin_command, self.env.path,
-            repo_name, changeset)
-        proc = subprocess.Popen(cmd, shell=True)
-        status = os.waitpid(proc.pid, 0)[1]
-        if status != 0:
-            raise Exception("trac-admin command [%s] for repository [%s] changeset [%s] failed: %s"
-                % (cmd, repo_name, changeset, status))
+        changeset = None
+        for changeset in changesets:
+            cmd = '%s %s changeset added %s %s' % (self.trac_admin_command, self.env.path,
+                repo_name, changeset)
+            proc = subprocess.Popen(cmd, shell=True)
+            status = os.waitpid(proc.pid, 0)[1]
+            if status != 0:
+                raise Exception("trac-admin command [%s] for repository [%s] changeset [%s] failed: %s"
+                    % (cmd, repo_name, changeset, status))
 
         ## I'm ok, you're ok.
         self.log.info("updated repository [%s] to changeset [%s]" % (repo_name, changeset))
